@@ -10,7 +10,7 @@ class ApiService {
       final response = await http
           .post(
             Uri.parse('${AppConfig.baseUrl}/auth/login'),
-            body: {'username': username, 'password': password},
+            body: {'login': username, 'password': password},
           )
           .timeout(AppConfig.requestTimeout);
       return json.decode(response.body);
