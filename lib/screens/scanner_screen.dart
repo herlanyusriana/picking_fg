@@ -2,7 +2,16 @@ import 'package:flutter/material.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 class ScannerScreen extends StatefulWidget {
-  const ScannerScreen({super.key});
+  final String title;
+  final String hintText;
+  final String manualLabel;
+
+  const ScannerScreen({
+    super.key,
+    this.title = 'Scan QR Code',
+    this.hintText = 'Point camera at QR code',
+    this.manualLabel = 'Enter value',
+  });
 
   @override
   State<ScannerScreen> createState() => _ScannerScreenState();
@@ -35,7 +44,7 @@ class _ScannerScreenState extends State<ScannerScreen> {
     return Scaffold(
       backgroundColor: Colors.black,
       appBar: AppBar(
-        title: const Text('Scan QR Code', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: Text(widget.title, style: const TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.black,
         foregroundColor: Colors.white,
         actions: [
@@ -73,10 +82,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
             right: 0,
             child: Column(
               children: [
-                const Text(
-                  'Point camera at QR code',
+                Text(
+                  widget.hintText,
                   textAlign: TextAlign.center,
-                  style: TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
+                  style: const TextStyle(color: Colors.white, fontSize: 16, fontWeight: FontWeight.bold),
                 ),
                 const SizedBox(height: 16),
                 TextButton.icon(
@@ -101,10 +110,10 @@ class _ScannerScreenState extends State<ScannerScreen> {
         content: TextField(
           controller: controller,
           autofocus: true,
-          decoration: const InputDecoration(
-            labelText: 'Part Number',
-            hintText: 'Enter part number',
-            border: OutlineInputBorder(),
+          decoration: InputDecoration(
+            labelText: widget.manualLabel,
+            hintText: widget.manualLabel,
+            border: const OutlineInputBorder(),
           ),
           onSubmitted: (val) {
             if (val.isNotEmpty) {

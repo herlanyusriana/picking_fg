@@ -19,6 +19,7 @@ class _HomeScreenState extends State<HomeScreen> {
   List<PickingItem> _items = [];
   bool _loading = false;
   String _userName = '';
+  String? _scannedLocation; // Current scanned location
   final _api = ApiService();
 
   @override
@@ -110,19 +111,59 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
+  void _clearLocation() {
+    setState(() => _scannedLocation = null);
+    _showError('Location cleared');
+  }
 
-
-  // ---- SCAN FLOW ----
+  // ---- SCAN FLOW: Location First, Then Part ----
   void _startScan() async {
-    final scannedValue = await Navigator.push<String>(
+    // STEP 1: Scan Location first
+    final scannedLocation = await Navigator.push<String>(
       context,
-      MaterialPageRoute(builder: (context) => const ScannerScreen()),
+      MaterialPageRoute(
+        builder: (context) => const ScannerScreen(
+          title: '📍 Scan Location',
+          hintText: 'Scan lokasi gudang / rak terlebih dahulu',
+          manualLabel: 'Location Code',
+        ),
+      ),
     );
 
-    if (scannedValue == null || scannedValue.isEmpty) return;
+    if (scannedLocation == null || scannedLocation.isEmpty) return;
 
-    // Lookup part via API
-    _processScannedPart(scannedValue);
+    setState(() => _scannedLocation = scannedLocation.toUpperCase().trim());
+
+    if (!mounted) return;
+
+    // Show location confirmation, then scan part
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text('📍 Location: $_scannedLocation — Now scan the part'),
+        backgroundColor: Colors.indigo,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+
+    // STEP 2: Scan Part
+    await Future.delayed(const Duration(milliseconds: 500));
+    if (!mounted) return;
+
+    final scannedPart = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const ScannerScreen(
+          title: '📦 Scan Part',
+          hintText: 'Scan barcode / QR part number',
+          manualLabel: 'Part Number',
+        ),
+      ),
+    );
+
+    if (scannedPart == null || scannedPart.isEmpty) return;
+
+    // Process the scanned part with the location
+    _processScannedPart(scannedPart);
   }
 
   void _processScannedPart(String partNo) async {
@@ -155,6 +196,7 @@ class _HomeScreenState extends State<HomeScreen> {
       _showPickDialog(
         partNo: part['part_no'],
         partName: part['part_name'],
+        expectedLocation: part['expected_location'],
         doNo: picks[0]['do_no'],
         deliveryOrderId: picks[0]['delivery_order_id'],
         qtyPlan: picks[0]['qty_plan'],
@@ -190,6 +232,14 @@ class _HomeScreenState extends State<HomeScreen> {
               const SizedBox(height: 16),
               Text(part['part_no'], style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.indigo)),
               Text(part['part_name'], style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
+              if (_scannedLocation != null) ...[
+                const SizedBox(height: 6),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(color: Colors.indigo.shade50, borderRadius: BorderRadius.circular(8)),
+                  child: Text('📍 $_scannedLocation', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.indigo.shade700)),
+                ),
+              ],
               const SizedBox(height: 12),
               const Text('Select Delivery Order:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
               const SizedBox(height: 8),
@@ -210,6 +260,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     _showPickDialog(
                       partNo: part['part_no'],
                       partName: part['part_name'],
+                      expectedLocation: part['expected_location'],
                       doNo: pick['do_no'],
                       deliveryOrderId: pick['delivery_order_id'],
                       qtyPlan: pick['qty_plan'],
@@ -229,6 +280,7 @@ class _HomeScreenState extends State<HomeScreen> {
   void _showPickDialog({
     required String partNo,
     required String partName,
+    String? expectedLocation,
     required String? doNo,
     required int? deliveryOrderId,
     required int qtyPlan,
@@ -237,6 +289,12 @@ class _HomeScreenState extends State<HomeScreen> {
   }) {
     final qtyController = TextEditingController(text: qtyRemaining > 0 ? qtyRemaining.toString() : '1');
     bool submitting = false;
+
+    // Check if scanned location matches expected location
+    final bool locationMismatch = _scannedLocation != null &&
+        expectedLocation != null &&
+        expectedLocation.isNotEmpty &&
+        _scannedLocation != expectedLocation.toUpperCase().trim();
 
     showDialog(
       context: context,
@@ -253,6 +311,34 @@ class _HomeScreenState extends State<HomeScreen> {
                   padding: const EdgeInsets.only(top: 4),
                   child: Text(doNo, style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.grey.shade500)),
                 ),
+              const SizedBox(height: 6),
+              // Location info
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: locationMismatch ? Colors.amber.shade50 : Colors.indigo.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                  border: locationMismatch ? Border.all(color: Colors.amber.shade400) : null,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (_scannedLocation != null)
+                      Text('📍 Scan: $_scannedLocation',
+                        style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.indigo.shade700)),
+                    if (expectedLocation != null && expectedLocation.isNotEmpty)
+                      Text('📋 Expected: $expectedLocation',
+                        style: TextStyle(fontSize: 11, color: Colors.grey.shade600)),
+                    if (locationMismatch)
+                      Padding(
+                        padding: const EdgeInsets.only(top: 4),
+                        child: Text('⚠️ Location mismatch!',
+                          style: TextStyle(fontSize: 11, fontWeight: FontWeight.bold, color: Colors.amber.shade800)),
+                      ),
+                  ],
+                ),
+              ),
             ],
           ),
           content: Column(
@@ -306,12 +392,20 @@ class _HomeScreenState extends State<HomeScreen> {
                         return;
                       }
 
+                      if (_scannedLocation == null || _scannedLocation!.isEmpty) {
+                        ScaffoldMessenger.of(ctx).showSnackBar(
+                          const SnackBar(content: Text('Location is required. Please scan location first.')),
+                        );
+                        return;
+                      }
+
                       setDialogState(() => submitting = true);
 
                       final res = await _api.updatePick(
                         date: _dateStr,
                         partNo: partNo,
                         qty: qty,
+                        location: _scannedLocation!,
                         deliveryOrderId: deliveryOrderId,
                       );
 
@@ -329,8 +423,8 @@ class _HomeScreenState extends State<HomeScreen> {
                         final rejected = (data?['rejected_qty'] ?? 0) as int;
                         final status = data?['status'] ?? 'ok';
                         final msg = rejected > 0
-                            ? 'Picked $applied/$qty x $partNo ($status). Rejected: $rejected'
-                            : 'Picked $applied x $partNo ($status)';
+                            ? 'Picked $applied/$qty x $partNo @ $_scannedLocation ($status). Rejected: $rejected'
+                            : 'Picked $applied x $partNo @ $_scannedLocation ($status)';
                         _showSuccess(msg);
                         _fetchData();
                       } else if (res['require_do_selection'] == true && (res['options'] is List)) {
@@ -380,6 +474,11 @@ class _HomeScreenState extends State<HomeScreen> {
             children: [
               Text(partNo, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.indigo)),
               Text(partName, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+              if (_scannedLocation != null)
+                Padding(
+                  padding: const EdgeInsets.only(top: 4),
+                  child: Text('📍 $_scannedLocation', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.indigo.shade700)),
+                ),
               const SizedBox(height: 12),
               const Text('Part ini ada di beberapa DO. Pilih DO:', style: TextStyle(fontWeight: FontWeight.bold)),
               const SizedBox(height: 8),
@@ -394,10 +493,15 @@ class _HomeScreenState extends State<HomeScreen> {
                         ? null
                         : () async {
                             Navigator.pop(ctx);
+                            if (_scannedLocation == null || _scannedLocation!.isEmpty) {
+                              _showError('Location is required. Please scan again.');
+                              return;
+                            }
                             final res = await _api.updatePick(
                               date: _dateStr,
                               partNo: partNo,
                               qty: qty,
+                              location: _scannedLocation!,
                               deliveryOrderId: doId,
                             );
 
@@ -412,8 +516,8 @@ class _HomeScreenState extends State<HomeScreen> {
                               final rejected = (data?['rejected_qty'] ?? 0) as int;
                               final status = data?['status'] ?? 'ok';
                               final msg = rejected > 0
-                                  ? 'Picked $applied/$qty x $partNo ($status). Rejected: $rejected'
-                                  : 'Picked $applied x $partNo ($status)';
+                                  ? 'Picked $applied/$qty x $partNo @ $_scannedLocation ($status). Rejected: $rejected'
+                                  : 'Picked $applied x $partNo @ $_scannedLocation ($status)';
                               _showSuccess(msg);
                               _fetchData();
                             } else {
@@ -499,6 +603,36 @@ class _HomeScreenState extends State<HomeScreen> {
             ),
           ),
 
+          // Location badge bar
+          if (_scannedLocation != null)
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+              color: Colors.indigo.shade700,
+              child: Row(
+                children: [
+                  const Icon(Icons.location_on, color: Colors.white, size: 18),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Location: $_scannedLocation',
+                      style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13),
+                    ),
+                  ),
+                  GestureDetector(
+                    onTap: _clearLocation,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                      decoration: BoxDecoration(
+                        color: Colors.white.withAlpha(40),
+                        borderRadius: BorderRadius.circular(6),
+                      ),
+                      child: const Text('Clear', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+
           // Stats row
           if (_items.isNotEmpty)
             Container(
@@ -507,7 +641,7 @@ class _HomeScreenState extends State<HomeScreen> {
               child: Row(
                 mainAxisAlignment: MainAxisAlignment.spaceAround,
                 children: [
-                  _statChip('SO', grouped.length.toString(), Colors.indigo),
+                  _statChip('DO', grouped.length.toString(), Colors.indigo),
                   _statChip('Parts', _items.length.toString(), Colors.grey.shade700),
                   _statChip('Pending', _items.where((i) => i.status == 'pending').length.toString(), Colors.grey),
                   _statChip('Picking', _items.where((i) => i.status == 'picking').length.toString(), Colors.orange),
@@ -654,6 +788,8 @@ class _HomeScreenState extends State<HomeScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(item.partName, style: const TextStyle(fontSize: 11)),
+                    const SizedBox(height: 2),
+                    // Location info row
                     Row(
                       children: [
                         Container(
@@ -662,6 +798,15 @@ class _HomeScreenState extends State<HomeScreen> {
                           decoration: BoxDecoration(color: statusColor.withAlpha(30), borderRadius: BorderRadius.circular(4)),
                           child: Text(item.status.toUpperCase(), style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: statusColor)),
                         ),
+                        const SizedBox(width: 6),
+                        if (item.expectedLocation != null && item.expectedLocation!.isNotEmpty)
+                          Container(
+                            margin: const EdgeInsets.only(top: 3),
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(color: Colors.indigo.shade50, borderRadius: BorderRadius.circular(4)),
+                            child: Text('📍 ${item.expectedLocation}',
+                              style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.indigo.shade700)),
+                          ),
                       ],
                     ),
                   ],
@@ -678,6 +823,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 onTap: item.status == 'completed' ? null : () => _showPickDialog(
                   partNo: item.partNo,
                   partName: item.partName,
+                  expectedLocation: item.expectedLocation,
                   doNo: item.doNo,
                   deliveryOrderId: item.deliveryOrderId,
                   qtyPlan: item.qtyPlan,

@@ -84,18 +84,20 @@ class ApiService {
     required String date,
     required String partNo,
     required int qty,
-    String? location,
+    required String location,
     int? deliveryOrderId,
   }) async {
     try {
       final headers = await _authHeaders();
-      final body = {
+      final body = <String, dynamic>{
         'date': date,
         'part_no': partNo,
         'qty': qty,
-        ...?location != null ? {'location': location} : null,
-        ...?deliveryOrderId != null ? {'delivery_order_id': deliveryOrderId} : null,
+        'location': location,
       };
+      if (deliveryOrderId != null) {
+        body['delivery_order_id'] = deliveryOrderId;
+      }
       final response = await http
           .post(
             Uri.parse('${AppConfig.baseUrl}/picking-fg/pick'),
