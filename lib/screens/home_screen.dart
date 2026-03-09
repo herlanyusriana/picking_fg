@@ -110,41 +110,7 @@ class _HomeScreenState extends State<HomeScreen> {
     );
   }
 
-  void _showDnCreatedDialog(String dnNo, String dnTime) {
-    showDialog(
-      context: context,
-      builder: (ctx) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        icon: const Icon(Icons.check_circle, color: Colors.green, size: 48),
-        title: const Text('Delivery Note Created!', style: TextStyle(fontWeight: FontWeight.bold)),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Text(dnNo, style: const TextStyle(fontSize: 20, fontWeight: FontWeight.w900, color: Colors.indigo)),
-            const SizedBox(height: 4),
-            Text(dnTime, style: TextStyle(fontSize: 13, color: Colors.grey.shade600)),
-            const SizedBox(height: 12),
-            Text(
-              'Surat Jalan otomatis dibuat karena semua picking untuk DO ini sudah selesai.',
-              textAlign: TextAlign.center,
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
-            ),
-          ],
-        ),
-        actions: [
-          ElevatedButton(
-            onPressed: () => Navigator.pop(ctx),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.indigo,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-            ),
-            child: const Text('OK'),
-          ),
-        ],
-      ),
-    );
-  }
+
 
   // ---- SCAN FLOW ----
   void _startScan() async {
@@ -367,13 +333,6 @@ class _HomeScreenState extends State<HomeScreen> {
                             : 'Picked $applied x $partNo ($status)';
                         _showSuccess(msg);
                         _fetchData();
-
-                        // Show DN auto-created notification
-                        if (data?['dn_created'] != null) {
-                          final dnNo = data['dn_created']['dn_no'] ?? '';
-                          final dnTime = data['dn_created']['created_at'] ?? '';
-                          _showDnCreatedDialog(dnNo, dnTime);
-                        }
                       } else if (res['require_do_selection'] == true && (res['options'] is List)) {
                         _showDoSelectorForRetry(
                           partNo: partNo,
@@ -457,13 +416,6 @@ class _HomeScreenState extends State<HomeScreen> {
                                   : 'Picked $applied x $partNo ($status)';
                               _showSuccess(msg);
                               _fetchData();
-
-                              // Show DN auto-created notification
-                              if (data?['dn_created'] != null) {
-                                final dnNo = data['dn_created']['dn_no'] ?? '';
-                                final dnTime = data['dn_created']['created_at'] ?? '';
-                                _showDnCreatedDialog(dnNo, dnTime);
-                              }
                             } else {
                               _showError(res['message'] ?? 'Pick failed');
                             }
@@ -503,7 +455,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('Picking FG', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('Picking FG GCI', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.indigo,
         foregroundColor: Colors.white,
         actions: [
@@ -723,7 +675,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       Text('${item.qtyRemaining} left', style: TextStyle(fontSize: 10, color: Colors.orange.shade700, fontWeight: FontWeight.bold)),
                   ],
                 ),
-                onTap: () => _showPickDialog(
+                onTap: item.status == 'completed' ? null : () => _showPickDialog(
                   partNo: item.partNo,
                   partName: item.partName,
                   doNo: item.doNo,
