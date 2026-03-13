@@ -191,6 +191,10 @@ class _HomeScreenState extends State<HomeScreen> {
     final part = res['part'];
     final picks = (res['picks'] as List).cast<Map<String, dynamic>>();
 
+    // Parse stock_locations from lookup response
+    final rawLocations = part['stock_locations'] as List? ?? [];
+    final stockLocs = rawLocations.map((l) => StockLocation.fromJson(Map<String, dynamic>.from(l as Map))).toList();
+
     if (picks.length == 1) {
       // Single SO - show pick dialog directly
       _showPickDialog(
@@ -202,14 +206,15 @@ class _HomeScreenState extends State<HomeScreen> {
         qtyPlan: picks[0]['qty_plan'],
         qtyPicked: picks[0]['qty_picked'],
         qtyRemaining: picks[0]['qty_remaining'],
+        stockLocations: stockLocs,
       );
     } else {
       // Multiple SOs - let user choose
-      _showSoSelector(part, picks);
+      _showSoSelector(part, picks, stockLocs);
     }
   }
 
-  void _showSoSelector(Map<String, dynamic> part, List<Map<String, dynamic>> picks) {
+  void _showSoSelector(Map<String, dynamic> part, List<Map<String, dynamic>> picks, List<StockLocation> stockLocations) {
     showModalBottomSheet(
       context: context,
       isScrollControlled: true,
@@ -266,6 +271,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       qtyPlan: pick['qty_plan'],
                       qtyPicked: pick['qty_picked'],
                       qtyRemaining: pick['qty_remaining'],
+                      stockLocations: stockLocations,
                     );
                   },
                 ),
@@ -286,6 +292,7 @@ class _HomeScreenState extends State<HomeScreen> {
     required int qtyPlan,
     required int qtyPicked,
     required int qtyRemaining,
+    List<StockLocation> stockLocations = const [],
   }) {
     final qtyController = TextEditingController(text: qtyRemaining > 0 ? qtyRemaining.toString() : '1');
     bool submitting = false;
@@ -344,6 +351,53 @@ class _HomeScreenState extends State<HomeScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
+              // Stock locations guide
+              if (stockLocations.isNotEmpty) ...[
+                Align(
+                  alignment: Alignment.centerLeft,
+                  child: Text('Ambil di:', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: Colors.grey.shade700)),
+                ),
+                const SizedBox(height: 4),
+                ...stockLocations.map((loc) {
+                  final isMatch = _scannedLocation != null &&
+                      _scannedLocation == loc.code.toUpperCase().trim();
+                  return Container(
+                    width: double.infinity,
+                    margin: const EdgeInsets.only(bottom: 4),
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: isMatch ? Colors.green.shade50 : Colors.grey.shade50,
+                      borderRadius: BorderRadius.circular(8),
+                      border: Border.all(color: isMatch ? Colors.green.shade400 : Colors.grey.shade200),
+                    ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          isMatch ? Icons.check_circle : Icons.location_on_outlined,
+                          size: 16,
+                          color: isMatch ? Colors.green.shade700 : Colors.grey.shade500,
+                        ),
+                        const SizedBox(width: 8),
+                        Expanded(
+                          child: Text(loc.code,
+                            style: TextStyle(
+                              fontSize: 13,
+                              fontWeight: isMatch ? FontWeight.bold : FontWeight.w500,
+                              color: isMatch ? Colors.green.shade800 : Colors.grey.shade800,
+                            )),
+                        ),
+                        Text('${loc.qty.toInt()} pcs',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: isMatch ? Colors.green.shade700 : Colors.grey.shade600,
+                          )),
+                      ],
+                    ),
+                  );
+                }),
+                const SizedBox(height: 8),
+              ],
               // Status row
               Container(
                 padding: const EdgeInsets.all(12),
@@ -790,7 +844,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     Text(item.partName, style: const TextStyle(fontSize: 11)),
                     const SizedBox(height: 2),
                     // Location info row
-                    Row(
+                    Wrap(
+                      spacing: 4,
+                      runSpacing: 2,
                       children: [
                         Container(
                           margin: const EdgeInsets.only(top: 3),
@@ -798,8 +854,15 @@ class _HomeScreenState extends State<HomeScreen> {
                           decoration: BoxDecoration(color: statusColor.withAlpha(30), borderRadius: BorderRadius.circular(4)),
                           child: Text(item.status.toUpperCase(), style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: statusColor)),
                         ),
-                        const SizedBox(width: 6),
-                        if (item.expectedLocation != null && item.expectedLocation!.isNotEmpty)
+                        if (item.stockLocations.isNotEmpty)
+                          ...item.stockLocations.map((loc) => Container(
+                            margin: const EdgeInsets.only(top: 3),
+                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                            decoration: BoxDecoration(color: Colors.green.shade50, borderRadius: BorderRadius.circular(4)),
+                            child: Text('${loc.code} (${loc.qty.toInt()})',
+                              style: TextStyle(fontSize: 8, fontWeight: FontWeight.bold, color: Colors.green.shade700)),
+                          ))
+                        else if (item.expectedLocation != null && item.expectedLocation!.isNotEmpty)
                           Container(
                             margin: const EdgeInsets.only(top: 3),
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
@@ -829,6 +892,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   qtyPlan: item.qtyPlan,
                   qtyPicked: item.qtyPicked,
                   qtyRemaining: item.qtyRemaining,
+                  stockLocations: item.stockLocations,
                 ),
               ),
             ],
