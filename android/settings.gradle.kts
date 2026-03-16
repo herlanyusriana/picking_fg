@@ -1,3 +1,4 @@
+rootProject.name = "picking_fg_android"
 pluginManagement {
     val flutterSdkPath =
         run {

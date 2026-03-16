@@ -37,13 +37,14 @@ class ApiService {
 
   Future<Map<String, dynamic>> _handleResponse(http.Response response) async {
     if (response.statusCode == 401) {
-      // Token expired
       final prefs = await SharedPreferences.getInstance();
       await prefs.remove('token');
       return {'success': false, 'message': 'Session expired. Please login again.', 'auth_expired': true};
     }
     return json.decode(response.body);
   }
+
+  // ─── Legacy flat list ───────────────────────────────────────────
 
   Future<Map<String, dynamic>> getPickingList(String date) async {
     try {
@@ -80,12 +81,108 @@ class ApiService {
     }
   }
 
+  // ─── DO-based picking flow ──────────────────────────────────────
+
+  /// List Delivery Orders with picking tasks for a date.
+  Future<Map<String, dynamic>> getDeliveryOrders(String date) async {
+    try {
+      final headers = await _authHeaders();
+      final response = await http
+          .get(
+            Uri.parse('${AppConfig.baseUrl}/picking-fg/delivery-orders?date=$date'),
+            headers: headers,
+          )
+          .timeout(AppConfig.requestTimeout);
+      return _handleResponse(response);
+    } on SocketException {
+      return {'success': false, 'message': 'No internet connection'};
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  /// Get DO detail with parts to pick.
+  Future<Map<String, dynamic>> getDeliveryOrderDetail(int doId, String date) async {
+    try {
+      final headers = await _authHeaders();
+      final response = await http
+          .get(
+            Uri.parse('${AppConfig.baseUrl}/picking-fg/delivery-orders/$doId?date=$date'),
+            headers: headers,
+          )
+          .timeout(AppConfig.requestTimeout);
+      return _handleResponse(response);
+    } on SocketException {
+      return {'success': false, 'message': 'No internet connection'};
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  /// Scan location — validate and get parts with stock at this location for a DO.
+  Future<Map<String, dynamic>> scanLocation({
+    required int deliveryOrderId,
+    required String date,
+    required String locationCode,
+  }) async {
+    try {
+      final headers = await _authHeaders();
+      final response = await http
+          .post(
+            Uri.parse('${AppConfig.baseUrl}/picking-fg/scan-location'),
+            headers: headers,
+            body: json.encode({
+              'delivery_order_id': deliveryOrderId,
+              'date': date,
+              'location_code': locationCode,
+            }),
+          )
+          .timeout(AppConfig.requestTimeout);
+      return _handleResponse(response);
+    } on SocketException {
+      return {'success': false, 'message': 'No internet connection'};
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  /// Scan part — validate part against DO and location.
+  Future<Map<String, dynamic>> scanPart({
+    required int deliveryOrderId,
+    required String date,
+    required String locationCode,
+    required String partCode,
+  }) async {
+    try {
+      final headers = await _authHeaders();
+      final response = await http
+          .post(
+            Uri.parse('${AppConfig.baseUrl}/picking-fg/scan-part'),
+            headers: headers,
+            body: json.encode({
+              'delivery_order_id': deliveryOrderId,
+              'date': date,
+              'location_code': locationCode,
+              'part_code': partCode,
+            }),
+          )
+          .timeout(AppConfig.requestTimeout);
+      return _handleResponse(response);
+    } on SocketException {
+      return {'success': false, 'message': 'No internet connection'};
+    } catch (e) {
+      return {'success': false, 'message': 'Connection error: $e'};
+    }
+  }
+
+  /// Submit pick with DO + location (required).
   Future<Map<String, dynamic>> updatePick({
     required String date,
     required String partNo,
     required int qty,
     required String location,
-    int? deliveryOrderId,
+    required int deliveryOrderId,
+    String? batchNo,
   }) async {
     try {
       final headers = await _authHeaders();
@@ -94,9 +191,10 @@ class ApiService {
         'part_no': partNo,
         'qty': qty,
         'location': location,
+        'delivery_order_id': deliveryOrderId,
       };
-      if (deliveryOrderId != null) {
-        body['delivery_order_id'] = deliveryOrderId;
+      if (batchNo != null && batchNo.isNotEmpty) {
+        body['batch_no'] = batchNo;
       }
       final response = await http
           .post(

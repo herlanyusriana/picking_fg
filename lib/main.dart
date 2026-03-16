@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'screens/login_screen.dart';
-import 'screens/home_screen.dart';
+import 'screens/do_list_screen.dart';
 
 void main() {
   runApp(const PickingApp());
@@ -46,7 +46,7 @@ class _AuthCheckState extends State<AuthCheck> {
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (context) => token != null ? const HomeScreen() : const LoginScreen(),
+          builder: (context) => token != null ? const DoListScreen() : const LoginScreen(),
         ),
       );
     }

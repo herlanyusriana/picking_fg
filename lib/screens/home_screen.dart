@@ -460,7 +460,7 @@ class _HomeScreenState extends State<HomeScreen> {
                         partNo: partNo,
                         qty: qty,
                         location: _scannedLocation!,
-                        deliveryOrderId: deliveryOrderId,
+                        deliveryOrderId: deliveryOrderId!,
                       );
 
                       if (res['auth_expired'] == true) {
