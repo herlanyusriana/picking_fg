@@ -24,7 +24,6 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
   Map<String, dynamic>? _doInfo;
   List<Map<String, dynamic>> _items = [];
   bool _loading = false;
-  String? _scannedLocation;
 
   @override
   void initState() {
@@ -70,11 +69,239 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
     );
   }
 
-  // ─── SCAN FLOW ──────────────────────────────────────────────────
+  void _showLoading() {
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (ctx) => const Center(child: CircularProgressIndicator()),
+    );
+  }
 
-  void _startScan() async {
-    // Step 1: Scan Location
-    final location = await Navigator.push<String>(
+  // ─── FLOW: Tap Part → Show Locations → Scan Location → Scan Part → Qty ───
+
+  void _onTapPart(Map<String, dynamic> item) {
+    final qtyRemaining = (item['qty_remaining'] ?? 0) as int;
+    if (qtyRemaining <= 0) return;
+
+    final stockLocations = (item['stock_locations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final partNo = item['part_no'] ?? '';
+    final partName = item['part_name'] ?? '';
+    final expectedLocation = item['expected_location']?.toString();
+
+    if (stockLocations.isEmpty) {
+      _showError('No stock available for $partNo');
+      return;
+    }
+
+    // Show location picker bottom sheet
+    _showLocationPicker(
+      partNo: partNo,
+      partName: partName,
+      expectedLocation: expectedLocation,
+      stockLocations: stockLocations,
+      item: item,
+    );
+  }
+
+  void _showLocationPicker({
+    required String partNo,
+    required String partName,
+    required String? expectedLocation,
+    required List<Map<String, dynamic>> stockLocations,
+    required Map<String, dynamic> item,
+  }) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
+      ),
+      builder: (ctx) => Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // Header
+            Row(
+              children: [
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(partNo, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: Colors.indigo)),
+                      if (partName.isNotEmpty)
+                        Text(partName, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                    ],
+                  ),
+                ),
+                IconButton(
+                  onPressed: () => Navigator.pop(ctx),
+                  icon: const Icon(Icons.close),
+                ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text('Scan lokasi di bawah ini:', style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Colors.grey.shade700)),
+            const SizedBox(height: 12),
+
+            // Location list
+            ...stockLocations.map((loc) {
+              final code = loc['location_code'] ?? '';
+              final qty = ((loc['qty'] ?? 0) as num).toInt();
+              final batch = loc['batch_no']?.toString();
+              final isDefault = expectedLocation != null && code.toUpperCase() == expectedLocation.toUpperCase();
+
+              return Container(
+                margin: const EdgeInsets.only(bottom: 8),
+                child: Material(
+                  color: isDefault ? Colors.indigo.shade50 : Colors.grey.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  child: InkWell(
+                    borderRadius: BorderRadius.circular(12),
+                    onTap: () {
+                      Navigator.pop(ctx);
+                      _proceedWithLocation(code, item);
+                    },
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+                      child: Row(
+                        children: [
+                          Icon(Icons.location_on, color: isDefault ? Colors.indigo : Colors.grey.shade600, size: 22),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Row(
+                                  children: [
+                                    Text(code, style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 15,
+                                      color: isDefault ? Colors.indigo.shade800 : Colors.black87,
+                                    )),
+                                    if (isDefault) ...[
+                                      const SizedBox(width: 6),
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 1),
+                                        decoration: BoxDecoration(
+                                          color: Colors.indigo.shade100,
+                                          borderRadius: BorderRadius.circular(4),
+                                        ),
+                                        child: Text('DEFAULT', style: TextStyle(fontSize: 8, fontWeight: FontWeight.w900, color: Colors.indigo.shade700)),
+                                      ),
+                                    ],
+                                  ],
+                                ),
+                                if (batch != null && batch.isNotEmpty)
+                                  Text('Batch: $batch', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
+                              ],
+                            ),
+                          ),
+                          Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.green.shade50,
+                              borderRadius: BorderRadius.circular(8),
+                              border: Border.all(color: Colors.green.shade200),
+                            ),
+                            child: Text('$qty pcs', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, color: Colors.green.shade700)),
+                          ),
+                          const SizedBox(width: 8),
+                          Icon(Icons.chevron_right, color: Colors.grey.shade400),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              );
+            }),
+
+            const SizedBox(height: 8),
+
+            // Scan location button
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                onPressed: () {
+                  Navigator.pop(ctx);
+                  _scanLocationForPart(item);
+                },
+                icon: const Icon(Icons.qr_code_scanner),
+                label: const Text('Scan Lokasi Lain'),
+                style: OutlinedButton.styleFrom(
+                  padding: const EdgeInsets.symmetric(vertical: 14),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                ),
+              ),
+            ),
+            SizedBox(height: MediaQuery.of(ctx).viewInsets.bottom + 8),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // User tapped a location from the list — scan location to confirm
+  void _proceedWithLocation(String locationCode, Map<String, dynamic> item) async {
+    // Scan location barcode to confirm
+    final scanned = await Navigator.push<String>(
+      context,
+      MaterialPageRoute(
+        builder: (context) => ScannerScreen(
+          title: 'Scan Lokasi: $locationCode',
+          hintText: 'Scan barcode lokasi $locationCode',
+          manualLabel: 'Location Code',
+        ),
+      ),
+    );
+    if (scanned == null || scanned.isEmpty) return;
+
+    final scannedCode = scanned.toUpperCase().trim();
+
+    // Verify scanned matches expected
+    if (scannedCode != locationCode.toUpperCase()) {
+      if (!mounted) return;
+      final proceed = await showDialog<bool>(
+        context: context,
+        builder: (ctx) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Lokasi tidak cocok', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+          content: Text('Expected: $locationCode\nScanned: $scannedCode\n\nLanjut dengan $scannedCode?'),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('BATAL')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('LANJUT')),
+          ],
+        ),
+      );
+      if (proceed != true) return;
+    }
+
+    // Validate location via API
+    if (!mounted) return;
+    _showLoading();
+
+    final locRes = await _api.scanLocation(
+      deliveryOrderId: widget.deliveryOrderId,
+      date: widget.date,
+      locationCode: scannedCode,
+    );
+
+    if (mounted) Navigator.pop(context); // dismiss loading
+
+    if (locRes['success'] != true) {
+      _showError(locRes['message'] ?? 'Invalid location');
+      return;
+    }
+
+    // Proceed to scan part
+    if (!mounted) return;
+    _scanPartAtLocation(scannedCode, item);
+  }
+
+  // User chose "Scan Lokasi Lain" — free scan
+  void _scanLocationForPart(Map<String, dynamic> item) async {
+    final scanned = await Navigator.push<String>(
       context,
       MaterialPageRoute(
         builder: (context) => const ScannerScreen(
@@ -84,12 +311,10 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
         ),
       ),
     );
-    if (location == null || location.isEmpty) return;
+    if (scanned == null || scanned.isEmpty) return;
 
-    final locationCode = location.toUpperCase().trim();
-    setState(() => _scannedLocation = locationCode);
+    final locationCode = scanned.toUpperCase().trim();
 
-    // Validate location against backend
     if (!mounted) return;
     _showLoading();
 
@@ -103,44 +328,29 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
 
     if (locRes['success'] != true) {
       _showError(locRes['message'] ?? 'Invalid location');
-      setState(() => _scannedLocation = null);
-      return;
-    }
-
-    final partsAtLocation = (locRes['parts'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-    if (partsAtLocation.isEmpty) {
-      _showError('No parts with stock at $locationCode for this DO');
       return;
     }
 
     if (!mounted) return;
+    _scanPartAtLocation(locationCode, item);
+  }
 
-    // Show snackbar with info
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(
-        content: Text('$locationCode — ${partsAtLocation.length} parts available. Scan part now.'),
-        backgroundColor: Colors.indigo,
-        duration: const Duration(seconds: 2),
-      ),
-    );
+  // Scan part barcode at confirmed location
+  void _scanPartAtLocation(String locationCode, Map<String, dynamic> item) async {
+    final partNo = item['part_no'] ?? '';
 
-    // Step 2: Scan Part
-    await Future.delayed(const Duration(milliseconds: 500));
-    if (!mounted) return;
-
-    final partCode = await Navigator.push<String>(
+    final scanned = await Navigator.push<String>(
       context,
       MaterialPageRoute(
-        builder: (context) => const ScannerScreen(
-          title: 'Scan Part',
-          hintText: 'Scan barcode / QR part',
+        builder: (context) => ScannerScreen(
+          title: 'Scan Part: $partNo',
+          hintText: 'Scan barcode part $partNo',
           manualLabel: 'Part No / Barcode',
         ),
       ),
     );
-    if (partCode == null || partCode.isEmpty) return;
+    if (scanned == null || scanned.isEmpty) return;
 
-    // Validate part against backend
     if (!mounted) return;
     _showLoading();
 
@@ -148,7 +358,7 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
       deliveryOrderId: widget.deliveryOrderId,
       date: widget.date,
       locationCode: locationCode,
-      partCode: partCode.toUpperCase().trim(),
+      partCode: scanned.toUpperCase().trim(),
     );
 
     if (mounted) Navigator.pop(context); // dismiss loading
@@ -156,21 +366,21 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
     if (partRes['success'] != true) {
       final altLocations = partRes['alternative_locations'] as List?;
       if (altLocations != null && altLocations.isNotEmpty) {
-        _showAlternativeLocations(partCode, altLocations.cast<Map<String, dynamic>>());
+        _showAlternativeLocations(scanned, altLocations.cast<Map<String, dynamic>>());
       } else {
         _showError(partRes['message'] ?? 'Part not valid');
       }
       return;
     }
 
-    // Step 3: Show pick dialog
+    // Show pick qty dialog
     final part = partRes['part'] as Map<String, dynamic>;
     final pick = partRes['pick'] as Map<String, dynamic>;
     final stock = partRes['stock'] as Map<String, dynamic>;
     final maxPick = (partRes['max_pick'] ?? 0) as int;
 
     _showPickDialog(
-      partNo: part['part_no'] ?? partCode,
+      partNo: part['part_no'] ?? partNo,
       partName: part['part_name'] ?? '',
       locationCode: locationCode,
       qtyPlan: (pick['qty_plan'] ?? 0) as int,
@@ -182,20 +392,12 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
     );
   }
 
-  void _showLoading() {
-    showDialog(
-      context: context,
-      barrierDismissible: false,
-      builder: (ctx) => const Center(child: CircularProgressIndicator()),
-    );
-  }
-
   void _showAlternativeLocations(String partCode, List<Map<String, dynamic>> locations) {
     showDialog(
       context: context,
       builder: (ctx) => AlertDialog(
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: Text('No stock at $_scannedLocation', style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        title: const Text('No stock at this location', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -229,64 +431,6 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
     );
   }
 
-  // ─── Quick pick from list (tap item) ────────────────────────────
-
-  void _quickPick(Map<String, dynamic> item) async {
-    final partNo = item['part_no'] ?? '';
-    final partName = item['part_name'] ?? '';
-    final qtyPlan = (item['qty_plan'] ?? 0) as int;
-    final qtyPicked = (item['qty_picked'] ?? 0) as int;
-    final qtyRemaining = (item['qty_remaining'] ?? 0) as int;
-    final stockLocations = (item['stock_locations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
-
-    if (qtyRemaining <= 0) return;
-
-    // If no location scanned yet, ask to scan
-    if (_scannedLocation == null) {
-      _showError('Scan location first');
-      _startScan();
-      return;
-    }
-
-    // Check if stock exists at scanned location
-    final stockAtLoc = stockLocations.firstWhere(
-      (s) => (s['location_code'] ?? '').toString().toUpperCase() == _scannedLocation,
-      orElse: () => <String, dynamic>{},
-    );
-
-    final stockQty = ((stockAtLoc['qty_available'] ?? stockAtLoc['qty'] ?? 0) as num).toDouble();
-    final batchNo = stockAtLoc['batch_no']?.toString();
-
-    if (stockAtLoc.isEmpty || stockQty <= 0) {
-      // Show warning but still allow pick
-      _showPickDialog(
-        partNo: partNo,
-        partName: partName,
-        locationCode: _scannedLocation!,
-        qtyPlan: qtyPlan,
-        qtyPicked: qtyPicked,
-        qtyRemaining: qtyRemaining,
-        stockAvailable: stockQty,
-        batchNo: batchNo,
-        maxPick: qtyRemaining,
-        noStockWarning: true,
-      );
-      return;
-    }
-
-    _showPickDialog(
-      partNo: partNo,
-      partName: partName,
-      locationCode: _scannedLocation!,
-      qtyPlan: qtyPlan,
-      qtyPicked: qtyPicked,
-      qtyRemaining: qtyRemaining,
-      stockAvailable: stockQty,
-      batchNo: batchNo,
-      maxPick: qtyRemaining < stockQty.toInt() ? qtyRemaining : stockQty.toInt(),
-    );
-  }
-
   // ─── PICK DIALOG ────────────────────────────────────────────────
 
   void _showPickDialog({
@@ -299,7 +443,6 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
     required double stockAvailable,
     String? batchNo,
     required int maxPick,
-    bool noStockWarning = false,
   }) {
     final qtyController = TextEditingController(text: maxPick > 0 ? maxPick.toString() : '');
     bool submitting = false;
@@ -316,7 +459,6 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
               if (partName.isNotEmpty)
                 Text(partName, style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
               const SizedBox(height: 8),
-              // Location info
               Container(
                 width: double.infinity,
                 padding: const EdgeInsets.all(8),
@@ -336,20 +478,6 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
                   ],
                 ),
               ),
-              if (noStockWarning) ...[
-                const SizedBox(height: 6),
-                Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.amber.shade50,
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(color: Colors.amber.shade300),
-                  ),
-                  child: Text('No stock found at this location for this part',
-                      style: TextStyle(fontSize: 11, color: Colors.amber.shade800, fontWeight: FontWeight.bold)),
-                ),
-              ],
               if (batchNo != null && batchNo.isNotEmpty) ...[
                 const SizedBox(height: 4),
                 Text('Batch: $batchNo', style: TextStyle(fontSize: 11, color: Colors.grey.shade500)),
@@ -359,7 +487,6 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
           content: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              // Status row
               Container(
                 padding: const EdgeInsets.all(12),
                 decoration: BoxDecoration(
@@ -437,7 +564,6 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
                         _fetchDetail();
 
                         if (doCompleted) {
-                          // Show completion dialog
                           await Future.delayed(const Duration(milliseconds: 500));
                           if (mounted) {
                             showDialog(
@@ -456,7 +582,7 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
                                   ElevatedButton(
                                     onPressed: () {
                                       Navigator.pop(ctx);
-                                      Navigator.pop(context); // Back to DO list
+                                      Navigator.pop(context);
                                     },
                                     child: const Text('BACK TO LIST'),
                                   ),
@@ -560,34 +686,6 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
               ),
             ),
 
-          // Location badge
-          if (_scannedLocation != null)
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-              color: Colors.indigo.shade700,
-              child: Row(
-                children: [
-                  const Icon(Icons.location_on, color: Colors.white, size: 18),
-                  const SizedBox(width: 8),
-                  Expanded(
-                    child: Text('Location: $_scannedLocation',
-                        style: const TextStyle(color: Colors.white, fontWeight: FontWeight.bold, fontSize: 13)),
-                  ),
-                  GestureDetector(
-                    onTap: () => setState(() => _scannedLocation = null),
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                      decoration: BoxDecoration(
-                        color: Colors.white.withAlpha(40),
-                        borderRadius: BorderRadius.circular(6),
-                      ),
-                      child: const Text('Clear', style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold)),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-
           // Parts list
           Expanded(
             child: _loading
@@ -613,13 +711,6 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
                       ),
           ),
         ],
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _startScan,
-        label: const Text('SCAN', style: TextStyle(fontWeight: FontWeight.bold)),
-        icon: const Icon(Icons.qr_code_scanner),
-        backgroundColor: Colors.indigo,
-        foregroundColor: Colors.white,
       ),
     );
   }
@@ -648,7 +739,7 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
       elevation: isCompleted ? 0 : 1,
       child: InkWell(
         borderRadius: BorderRadius.circular(12),
-        onTap: isCompleted ? null : () => _quickPick(item),
+        onTap: isCompleted ? null : () => _onTapPart(item),
         child: Padding(
           padding: const EdgeInsets.all(14),
           child: Column(
@@ -700,20 +791,14 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
                   ...stockLocations.map((loc) {
                     final code = loc['location_code'] ?? '';
                     final qty = ((loc['qty'] ?? 0) as num).toInt();
-                    final isScanned = _scannedLocation != null && code.toUpperCase() == _scannedLocation;
                     return Container(
                       padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                       decoration: BoxDecoration(
-                        color: isScanned ? Colors.green.shade100 : Colors.green.shade50,
+                        color: Colors.green.shade50,
                         borderRadius: BorderRadius.circular(4),
-                        border: isScanned ? Border.all(color: Colors.green.shade400) : null,
                       ),
                       child: Text('$code ($qty)',
-                          style: TextStyle(
-                            fontSize: 9,
-                            fontWeight: FontWeight.bold,
-                            color: isScanned ? Colors.green.shade800 : Colors.green.shade700,
-                          )),
+                          style: TextStyle(fontSize: 9, fontWeight: FontWeight.bold, color: Colors.green.shade700)),
                     );
                   }),
                 ],
