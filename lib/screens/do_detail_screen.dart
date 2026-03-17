@@ -84,8 +84,10 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
     if (trimmed.startsWith('{')) {
       try {
         final json = jsonDecode(trimmed) as Map<String, dynamic>;
-        if (json.containsKey('location_code')) {
-          return json['location_code'].toString().toUpperCase().trim();
+        // Support both old format (LOCATION) and new format (location_code)
+        final code = json['location_code'] ?? json['LOCATION'] ?? json['location'] ?? json['code'];
+        if (code != null) {
+          return code.toString().toUpperCase().trim();
         }
       } catch (_) {}
     }
