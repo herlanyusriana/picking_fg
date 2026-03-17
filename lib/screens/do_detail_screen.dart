@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import '../services/api_service.dart';
@@ -75,6 +76,32 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
       barrierDismissible: false,
       builder: (ctx) => const Center(child: CircularProgressIndicator()),
     );
+  }
+
+  // Parse QR scan result — could be JSON payload or plain location code
+  String _parseLocationCode(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.startsWith('{')) {
+      try {
+        final json = jsonDecode(trimmed) as Map<String, dynamic>;
+        if (json.containsKey('location_code')) {
+          return json['location_code'].toString().toUpperCase().trim();
+        }
+      } catch (_) {}
+    }
+    return trimmed.toUpperCase();
+  }
+
+  // Parse QR scan result for part — could be JSON or plain part_no/barcode
+  String _parsePartCode(String raw) {
+    final trimmed = raw.trim();
+    if (trimmed.startsWith('{')) {
+      try {
+        final json = jsonDecode(trimmed) as Map<String, dynamic>;
+        return (json['part_no'] ?? json['barcode'] ?? json['code'] ?? trimmed).toString().toUpperCase().trim();
+      } catch (_) {}
+    }
+    return trimmed.toUpperCase();
   }
 
   // Merge stock locations by location_code (sum qty across batches)
@@ -277,7 +304,7 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
     );
     if (scanned == null || scanned.isEmpty) return;
 
-    final scannedCode = scanned.toUpperCase().trim();
+    final scannedCode = _parseLocationCode(scanned);
 
     // Verify scanned matches expected
     if (scannedCode != locationCode.toUpperCase()) {
@@ -333,7 +360,7 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
     );
     if (scanned == null || scanned.isEmpty) return;
 
-    final locationCode = scanned.toUpperCase().trim();
+    final locationCode = _parseLocationCode(scanned);
 
     if (!mounted) return;
     _showLoading();
@@ -378,7 +405,7 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
       deliveryOrderId: widget.deliveryOrderId,
       date: widget.date,
       locationCode: locationCode,
-      partCode: scanned.toUpperCase().trim(),
+      partCode: _parsePartCode(scanned),
     );
 
     if (mounted) Navigator.pop(context); // dismiss loading
