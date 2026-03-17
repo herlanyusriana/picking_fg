@@ -77,13 +77,33 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
     );
   }
 
+  // Merge stock locations by location_code (sum qty across batches)
+  List<Map<String, dynamic>> _mergeStockLocations(List<Map<String, dynamic>> locations) {
+    final Map<String, Map<String, dynamic>> merged = {};
+    for (final loc in locations) {
+      final code = (loc['location_code'] ?? '').toString().toUpperCase();
+      if (code.isEmpty) continue;
+      if (merged.containsKey(code)) {
+        merged[code]!['qty'] = ((merged[code]!['qty'] as num) + ((loc['qty'] ?? 0) as num)).toDouble();
+      } else {
+        merged[code] = {
+          'location_code': code,
+          'qty': ((loc['qty'] ?? 0) as num).toDouble(),
+          'batch_no': loc['batch_no'],
+        };
+      }
+    }
+    return merged.values.toList()..sort((a, b) => ((b['qty'] as num)).compareTo(a['qty'] as num));
+  }
+
   // ─── FLOW: Tap Part → Show Locations → Scan Location → Scan Part → Qty ───
 
   void _onTapPart(Map<String, dynamic> item) {
     final qtyRemaining = (item['qty_remaining'] ?? 0) as int;
     if (qtyRemaining <= 0) return;
 
-    final stockLocations = (item['stock_locations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final rawLocations = (item['stock_locations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final stockLocations = _mergeStockLocations(rawLocations);
     final partNo = item['part_no'] ?? '';
     final partName = item['part_name'] ?? '';
     final expectedLocation = item['expected_location']?.toString();
@@ -723,7 +743,8 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
     final qtyRemaining = (item['qty_remaining'] ?? 0) as int;
     final status = item['status'] ?? 'pending';
     final expectedLocation = item['expected_location']?.toString();
-    final stockLocations = (item['stock_locations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final rawLocations = (item['stock_locations'] as List?)?.cast<Map<String, dynamic>>() ?? [];
+    final stockLocations = _mergeStockLocations(rawLocations);
     final isCompleted = status == 'completed';
 
     final statusColor = isCompleted
