@@ -78,6 +78,115 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
     );
   }
 
+  Future<bool> _confirmScannedLocation({
+    required String scannedCode,
+    required String partNo,
+    String? expectedCode,
+  }) async {
+    final normalizedExpected = expectedCode?.trim().toUpperCase();
+    final isExpected = normalizedExpected != null && normalizedExpected.isNotEmpty && scannedCode == normalizedExpected;
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Konfirmasi Lokasi', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('Part: $partNo', style: const TextStyle(fontWeight: FontWeight.w700)),
+            const SizedBox(height: 10),
+            _confirmRow('Lokasi scan', scannedCode),
+            if (normalizedExpected != null && normalizedExpected.isNotEmpty) ...[
+              const SizedBox(height: 8),
+              _confirmRow('Lokasi target', normalizedExpected),
+            ],
+            const SizedBox(height: 12),
+            Text(
+              isExpected
+                  ? 'Lokasi sudah sesuai. Lanjut validasi lokasi ini?'
+                  : 'Lokasi berbeda dari target. Pastikan operator ingin melanjutkan di lokasi ini.',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('ULANG SCAN')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('LANJUT')),
+        ],
+      ),
+    );
+
+    return confirmed == true;
+  }
+
+  Future<bool> _confirmScannedPart({
+    required String scannedCode,
+    required String expectedPartNo,
+    required String locationCode,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Konfirmasi Part', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _confirmRow('Part target', expectedPartNo),
+            const SizedBox(height: 8),
+            _confirmRow('Hasil scan', scannedCode),
+            const SizedBox(height: 8),
+            _confirmRow('Lokasi', locationCode),
+            const SizedBox(height: 12),
+            Text(
+              'Pastikan label yang discan sudah benar sebelum lanjut validasi ke server.',
+              style: TextStyle(fontSize: 12, color: Colors.grey.shade700),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('ULANG SCAN')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('VALIDASI')),
+        ],
+      ),
+    );
+
+    return confirmed == true;
+  }
+
+  Widget _confirmRow(String label, String value) {
+    return Container(
+      width: double.infinity,
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(
+        color: Colors.grey.shade50,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: Colors.grey.shade200),
+      ),
+      child: Row(
+        children: [
+          SizedBox(
+            width: 92,
+            child: Text(
+              label,
+              style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Colors.grey.shade600),
+            ),
+          ),
+          Expanded(
+            child: Text(
+              value,
+              textAlign: TextAlign.right,
+              style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   // Parse QR scan result — could be JSON payload or plain location code
   String _parseLocationCode(String raw) {
     final trimmed = raw.trim();
@@ -293,6 +402,9 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
 
   // User tapped a location from the list — scan location to confirm
   void _proceedWithLocation(String locationCode, Map<String, dynamic> item) async {
+    final partNo = item['part_no']?.toString() ?? '-';
+    final expectedLocation = item['expected_location']?.toString();
+
     // Scan location barcode to confirm
     final scanned = await Navigator.push<String>(
       context,
@@ -326,6 +438,14 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
       if (proceed != true) return;
     }
 
+    if (!mounted) return;
+    final confirmed = await _confirmScannedLocation(
+      scannedCode: scannedCode,
+      partNo: partNo,
+      expectedCode: expectedLocation ?? locationCode,
+    );
+    if (!confirmed) return;
+
     // Validate location via API
     if (!mounted) return;
     _showLoading();
@@ -350,6 +470,9 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
 
   // User chose "Scan Lokasi Lain" — free scan
   void _scanLocationForPart(Map<String, dynamic> item) async {
+    final partNo = item['part_no']?.toString() ?? '-';
+    final expectedLocation = item['expected_location']?.toString();
+
     final scanned = await Navigator.push<String>(
       context,
       MaterialPageRoute(
@@ -363,6 +486,14 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
     if (scanned == null || scanned.isEmpty) return;
 
     final locationCode = _parseLocationCode(scanned);
+
+    if (!mounted) return;
+    final confirmed = await _confirmScannedLocation(
+      scannedCode: locationCode,
+      partNo: partNo,
+      expectedCode: expectedLocation,
+    );
+    if (!confirmed) return;
 
     if (!mounted) return;
     _showLoading();
@@ -386,7 +517,7 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
 
   // Scan part barcode at confirmed location
   void _scanPartAtLocation(String locationCode, Map<String, dynamic> item) async {
-    final partNo = item['part_no'] ?? '';
+    final partNo = item['part_no']?.toString() ?? '';
 
     final scanned = await Navigator.push<String>(
       context,
@@ -400,6 +531,16 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
     );
     if (scanned == null || scanned.isEmpty) return;
 
+    final scannedPartCode = _parsePartCode(scanned);
+
+    if (!mounted) return;
+    final confirmed = await _confirmScannedPart(
+      scannedCode: scannedPartCode,
+      expectedPartNo: partNo,
+      locationCode: locationCode,
+    );
+    if (!confirmed) return;
+
     if (!mounted) return;
     _showLoading();
 
@@ -407,7 +548,7 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
       deliveryOrderId: widget.deliveryOrderId,
       date: widget.date,
       locationCode: locationCode,
-      partCode: _parsePartCode(scanned),
+      partCode: scannedPartCode,
     );
 
     if (mounted) Navigator.pop(context); // dismiss loading
@@ -415,7 +556,7 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
     if (partRes['success'] != true) {
       final altLocations = partRes['alternative_locations'] as List?;
       if (altLocations != null && altLocations.isNotEmpty) {
-        _showAlternativeLocations(scanned, altLocations.cast<Map<String, dynamic>>());
+        _showAlternativeLocations(scannedPartCode, altLocations.cast<Map<String, dynamic>>());
       } else {
         _showError(partRes['message'] ?? 'Part not valid');
       }
@@ -669,6 +810,81 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
     );
   }
 
+  Widget _buildStepGuide() {
+    return Container(
+      width: double.infinity,
+      margin: const EdgeInsets.fromLTRB(16, 12, 16, 0),
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(
+        color: Colors.amber.shade50,
+        borderRadius: BorderRadius.circular(14),
+        border: Border.all(color: Colors.amber.shade200),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.fact_check_outlined, size: 18, color: Colors.orange.shade800),
+              const SizedBox(width: 8),
+              Text(
+                'Urutan Scan',
+                style: TextStyle(fontWeight: FontWeight.bold, color: Colors.orange.shade900),
+              ),
+            ],
+          ),
+          const SizedBox(height: 10),
+          Row(
+            children: [
+              _buildStepChip('1', 'Pilih part', Colors.indigo),
+              const SizedBox(width: 8),
+              _buildStepChip('2', 'Scan lokasi', Colors.orange),
+              const SizedBox(width: 8),
+              _buildStepChip('3', 'Scan part', Colors.green),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(
+            'Sesudah tiap scan akan muncul konfirmasi sebelum lanjut ke proses pick.',
+            style: TextStyle(fontSize: 12, color: Colors.orange.shade900),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStepChip(String number, String label, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+        decoration: BoxDecoration(
+          color: color.withAlpha(22),
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: Column(
+          children: [
+            Container(
+              width: 22,
+              height: 22,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(color: color, shape: BoxShape.circle),
+              child: Text(
+                number,
+                style: const TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+              ),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              label,
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 11, fontWeight: FontWeight.w700, color: color),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   // ─── BUILD ──────────────────────────────────────────────────────
 
   @override
@@ -734,6 +950,8 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
                 ],
               ),
             ),
+
+          if (_items.isNotEmpty) _buildStepGuide(),
 
           // Parts list
           Expanded(
@@ -853,6 +1071,34 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
                   }),
                 ],
               ),
+              if (!isCompleted) ...[
+                const SizedBox(height: 10),
+                Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(color: Colors.orange.shade100),
+                  ),
+                  child: Row(
+                    children: [
+                      Icon(Icons.touch_app, size: 16, color: Colors.orange.shade700),
+                      const SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Tap part ini untuk mulai scan lokasi lalu scan part.',
+                          style: TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w600,
+                            color: Colors.orange.shade800,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),
