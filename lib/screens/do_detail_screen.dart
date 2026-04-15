@@ -893,6 +893,8 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
     final qtyPicked = (_doInfo?['qty_picked'] ?? 0) as int;
     final progress = ((_doInfo?['progress'] ?? 0) as num).toDouble();
     final customer = _doInfo?['customer'] as Map<String, dynamic>? ?? {};
+    final deliveryNote = _doInfo?['delivery_note'] as Map<String, dynamic>?;
+    final dnNo = deliveryNote?['dn_no']?.toString();
 
     return Scaffold(
       appBar: AppBar(
@@ -947,6 +949,36 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
                       color: progress >= 100 ? Colors.green : Colors.indigo,
                     ),
                   ),
+                  if (deliveryNote != null) ...[
+                    const SizedBox(height: 10),
+                    Container(
+                      width: double.infinity,
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+                      decoration: BoxDecoration(
+                        color: Colors.blue.shade50,
+                        borderRadius: BorderRadius.circular(10),
+                        border: Border.all(color: Colors.blue.shade100),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(Icons.receipt_long, size: 18, color: Colors.blue.shade700),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              dnNo != null && dnNo.isNotEmpty
+                                  ? 'Delivery Note web sudah dibuat: $dnNo'
+                                  : 'Delivery Note web sudah dibuat untuk DO ini',
+                              style: TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w700,
+                                color: Colors.blue.shade800,
+                              ),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ],
               ),
             ),

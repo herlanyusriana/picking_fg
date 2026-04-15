@@ -64,7 +64,10 @@ class _DoListScreenState extends State<DoListScreen> {
         MaterialPageRoute(builder: (context) => const LoginScreen()),
       );
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Session expired. Please login again.'), backgroundColor: Colors.orange),
+        const SnackBar(
+          content: Text('Session expired. Please login again.'),
+          backgroundColor: Colors.orange,
+        ),
       );
     }
   }
@@ -110,7 +113,6 @@ class _DoListScreenState extends State<DoListScreen> {
         ),
       ),
     );
-    // Refresh after returning from detail
     _fetchOrders();
   }
 
@@ -131,7 +133,6 @@ class _DoListScreenState extends State<DoListScreen> {
       ),
       body: Column(
         children: [
-          // Date header
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             color: Colors.indigo.shade50,
@@ -142,8 +143,10 @@ class _DoListScreenState extends State<DoListScreen> {
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text('Hello, $_userName', style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 15)),
-                    Text(DateFormat('EEEE, d MMM yyyy').format(_selectedDate),
-                        style: TextStyle(color: Colors.grey.shade600, fontSize: 13)),
+                    Text(
+                      DateFormat('EEEE, d MMM yyyy').format(_selectedDate),
+                      style: TextStyle(color: Colors.grey.shade600, fontSize: 13),
+                    ),
                   ],
                 ),
                 ElevatedButton.icon(
@@ -165,8 +168,6 @@ class _DoListScreenState extends State<DoListScreen> {
               ],
             ),
           ),
-
-          // Summary stats
           if (_orders.isNotEmpty)
             Container(
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
@@ -177,14 +178,14 @@ class _DoListScreenState extends State<DoListScreen> {
                   _statChip('DO', _orders.length.toString(), Colors.indigo),
                   _statChip('Plan', totalPlan.toString(), Colors.grey.shade700),
                   _statChip('Picked', totalPicked.toString(), Colors.green),
-                  _statChip('Progress',
-                      totalPlan > 0 ? '${(totalPicked / totalPlan * 100).round()}%' : '0%',
-                      Colors.orange),
+                  _statChip(
+                    'Progress',
+                    totalPlan > 0 ? '${(totalPicked / totalPlan * 100).round()}%' : '0%',
+                    Colors.orange,
+                  ),
                 ],
               ),
             ),
-
-          // DO list
           Expanded(
             child: _loading
                 ? const Center(child: CircularProgressIndicator())
@@ -195,8 +196,10 @@ class _DoListScreenState extends State<DoListScreen> {
                           children: [
                             Icon(Icons.local_shipping_outlined, size: 64, color: Colors.grey.shade300),
                             const SizedBox(height: 12),
-                            Text('No delivery orders for this date',
-                                style: TextStyle(color: Colors.grey.shade500)),
+                            Text(
+                              'No delivery orders for this date',
+                              style: TextStyle(color: Colors.grey.shade500),
+                            ),
                           ],
                         ),
                       )
@@ -234,6 +237,9 @@ class _DoListScreenState extends State<DoListScreen> {
     final qtyPicked = (order['qty_picked'] ?? 0) as int;
     final progress = ((order['progress'] ?? 0) as num).toDouble();
     final allCompleted = order['all_completed'] == true;
+    final deliveryNote = order['delivery_note'] as Map<String, dynamic>?;
+    final hasDeliveryNote = order['has_delivery_note'] == true || deliveryNote != null;
+    final dnNo = deliveryNote?['dn_no']?.toString();
 
     return Card(
       margin: const EdgeInsets.only(bottom: 10),
@@ -247,7 +253,6 @@ class _DoListScreenState extends State<DoListScreen> {
           padding: const EdgeInsets.all(16),
           child: Row(
             children: [
-              // Progress ring
               SizedBox(
                 width: 48,
                 height: 48,
@@ -262,13 +267,14 @@ class _DoListScreenState extends State<DoListScreen> {
                             backgroundColor: Colors.grey.shade200,
                             color: Colors.indigo,
                           ),
-                          Text('${progress.round()}%',
-                              style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900)),
+                          Text(
+                            '${progress.round()}%',
+                            style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w900),
+                          ),
                         ],
                       ),
               ),
               const SizedBox(width: 14),
-              // DO info
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
@@ -276,36 +282,78 @@ class _DoListScreenState extends State<DoListScreen> {
                     Row(
                       children: [
                         Flexible(
-                          child: Text(doNo,
-                              style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
-                              overflow: TextOverflow.ellipsis),
+                          child: Text(
+                            doNo,
+                            style: const TextStyle(fontWeight: FontWeight.w900, fontSize: 15),
+                            overflow: TextOverflow.ellipsis,
+                          ),
                         ),
                         if (tripNo != null) ...[
                           const SizedBox(width: 6),
                           Container(
                             padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                             decoration: BoxDecoration(
-                                color: Colors.orange.shade100, borderRadius: BorderRadius.circular(6)),
-                            child: Text('T$tripNo',
-                                style: TextStyle(
-                                    fontSize: 10,
-                                    fontWeight: FontWeight.bold,
-                                    color: Colors.orange.shade900)),
+                              color: Colors.orange.shade100,
+                              borderRadius: BorderRadius.circular(6),
+                            ),
+                            child: Text(
+                              'T$tripNo',
+                              style: TextStyle(
+                                fontSize: 10,
+                                fontWeight: FontWeight.bold,
+                                color: Colors.orange.shade900,
+                              ),
+                            ),
                           ),
                         ],
                       ],
                     ),
                     const SizedBox(height: 3),
-                    Text('$customerName${customerCode.isNotEmpty ? ' ($customerCode)' : ''}',
-                        style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+                    Text(
+                      '$customerName${customerCode.isNotEmpty ? ' ($customerCode)' : ''}',
+                      style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                    ),
                     const SizedBox(height: 4),
-                    Text('$itemsCount parts  •  $qtyPicked / $qtyPlan picked',
-                        style: TextStyle(
-                            fontSize: 11, color: Colors.grey.shade500, fontWeight: FontWeight.w600)),
+                    Text(
+                      '$itemsCount parts  •  $qtyPicked / $qtyPlan picked',
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: Colors.grey.shade500,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    if (hasDeliveryNote) ...[
+                      const SizedBox(height: 8),
+                      Container(
+                        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 6),
+                        decoration: BoxDecoration(
+                          color: Colors.blue.shade50,
+                          borderRadius: BorderRadius.circular(8),
+                          border: Border.all(color: Colors.blue.shade100),
+                        ),
+                        child: Row(
+                          children: [
+                            Icon(Icons.receipt_long, size: 16, color: Colors.blue.shade700),
+                            const SizedBox(width: 6),
+                            Expanded(
+                              child: Text(
+                                dnNo != null && dnNo.isNotEmpty
+                                    ? 'Delivery Note sudah dibuat: $dnNo'
+                                    : 'Delivery Note sudah dibuat di web',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.w700,
+                                  color: Colors.blue.shade800,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ),
-              // Arrow
               Icon(Icons.chevron_right, color: Colors.grey.shade400),
             ],
           ),
