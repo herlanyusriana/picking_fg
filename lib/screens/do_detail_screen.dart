@@ -234,6 +234,219 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
     return merged.values.toList()..sort((a, b) => ((b['qty'] as num)).compareTo(a['qty'] as num));
   }
 
+  Map<String, dynamic>? _findItemByPartNo(String partNo) {
+    final normalized = partNo.trim().toUpperCase();
+    if (normalized.isEmpty) {
+      return null;
+    }
+
+    for (final item in _items) {
+      final itemPartNo = (item['part_no'] ?? '').toString().trim().toUpperCase();
+      if (itemPartNo == normalized) {
+        return item;
+      }
+    }
+
+    return null;
+  }
+
+  double _stockAtLocation(Map<String, dynamic> item, String locationCode) {
+    final normalizedLocation = locationCode.trim().toUpperCase();
+    if (normalizedLocation.isEmpty) {
+      return 0;
+    }
+
+    final locations = _mergeStockLocations(
+      (item['stock_locations'] as List?)?.cast<Map<String, dynamic>>() ?? [],
+    );
+    for (final loc in locations) {
+      final code = (loc['location_code'] ?? '').toString().trim().toUpperCase();
+      if (code == normalizedLocation) {
+        return ((loc['qty'] ?? 0) as num).toDouble();
+      }
+    }
+
+    return 0;
+  }
+
+  void _showManualPickDialog() {
+    final partController = TextEditingController();
+    final locationController = TextEditingController();
+    final qtyController = TextEditingController();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text(
+          'Input Manual Picking',
+          style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+        ),
+        content: SingleChildScrollView(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              TextField(
+                controller: partController,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  labelText: 'Part No',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.inventory_2_outlined),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: locationController,
+                textCapitalization: TextCapitalization.characters,
+                decoration: const InputDecoration(
+                  labelText: 'Lokasi',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.location_on_outlined),
+                ),
+              ),
+              const SizedBox(height: 12),
+              TextField(
+                controller: qtyController,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  labelText: 'Qty',
+                  border: OutlineInputBorder(),
+                  prefixIcon: Icon(Icons.numbers),
+                ),
+              ),
+              const SizedBox(height: 10),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(10),
+                decoration: BoxDecoration(
+                  color: Colors.amber.shade50,
+                  borderRadius: BorderRadius.circular(10),
+                  border: Border.all(color: Colors.amber.shade100),
+                ),
+                child: Text(
+                  'Manual dipakai untuk backup. Sistem tetap validasi part, lokasi, stock, dan sisa DO ke server.',
+                  style: TextStyle(
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.amber.shade900,
+                  ),
+                ),
+              ),
+            ],
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('BATAL'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              final partNo = _parsePartCode(partController.text);
+              final locationCode = _parseLocationCode(locationController.text);
+              final qty = int.tryParse(qtyController.text.trim()) ?? 0;
+
+              if (partNo.isEmpty || locationCode.isEmpty || qty <= 0) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  const SnackBar(content: Text('Part, lokasi, dan qty wajib diisi.')),
+                );
+                return;
+              }
+
+              final item = _findItemByPartNo(partNo);
+              if (item == null) {
+                ScaffoldMessenger.of(ctx).showSnackBar(
+                  SnackBar(content: Text('Part $partNo tidak ada di DO ini.')),
+                );
+                return;
+              }
+
+              Navigator.pop(ctx);
+              _submitManualPick(
+                item: item,
+                partNo: partNo,
+                locationCode: locationCode,
+                qty: qty,
+              );
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: Colors.indigo,
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('LANJUT'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _submitManualPick({
+    required Map<String, dynamic> item,
+    required String partNo,
+    required String locationCode,
+    required int qty,
+  }) async {
+    final qtyPlan = (item['qty_plan'] ?? 0) as int;
+    final qtyPicked = (item['qty_picked'] ?? 0) as int;
+    final qtyRemaining = (item['qty_remaining'] ?? 0) as int;
+    final partName = (item['part_name'] ?? '').toString();
+    final stockAvailable = _stockAtLocation(item, locationCode);
+    final maxPick = [
+      qtyRemaining,
+      stockAvailable.toInt(),
+    ].where((value) => value > 0).fold<int>(qty, (min, value) => value < min ? value : min);
+
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Konfirmasi Manual Pick'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _confirmRow('Part', partNo),
+            const SizedBox(height: 8),
+            _confirmRow('Lokasi', locationCode),
+            const SizedBox(height: 8),
+            _confirmRow('Qty input', qty.toString()),
+            const SizedBox(height: 8),
+            _confirmRow('Sisa DO', qtyRemaining.toString()),
+            const SizedBox(height: 8),
+            _confirmRow('Stock lokasi', stockAvailable.toInt().toString()),
+            if (stockAvailable <= 0) ...[
+              const SizedBox(height: 10),
+              Text(
+                'Stock lokasi belum kebaca di data APK. Server tetap akan validasi ulang saat submit.',
+                style: TextStyle(fontSize: 12, color: Colors.orange.shade800),
+              ),
+            ],
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('BATAL')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('SUBMIT')),
+        ],
+      ),
+    );
+
+    if (confirmed != true) {
+      return;
+    }
+
+    _showPickDialog(
+      partNo: partNo,
+      partName: partName,
+      locationCode: locationCode,
+      qtyPlan: qtyPlan,
+      qtyPicked: qtyPicked,
+      qtyRemaining: qtyRemaining,
+      stockAvailable: stockAvailable,
+      maxPick: maxPick > 0 ? maxPick : qty,
+      initialQty: qty,
+    );
+  }
+
   // ─── FLOW: Tap Part → Show Locations → Scan Location → Scan Part → Qty ───
 
   void _onTapPart(Map<String, dynamic> item) {
@@ -633,8 +846,13 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
     required double stockAvailable,
     String? batchNo,
     required int maxPick,
+    int? initialQty,
   }) {
-    final qtyController = TextEditingController(text: maxPick > 0 ? maxPick.toString() : '');
+    final qtyController = TextEditingController(
+      text: (initialQty != null && initialQty > 0)
+          ? initialQty.toString()
+          : (maxPick > 0 ? maxPick.toString() : ''),
+    );
     bool submitting = false;
 
     showDialog(
@@ -983,7 +1201,31 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
               ),
             ),
 
-          if (_items.isNotEmpty) _buildStepGuide(),
+          if (_items.isNotEmpty) ...[
+            _buildStepGuide(),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 10, 16, 0),
+              child: SizedBox(
+                width: double.infinity,
+                child: OutlinedButton.icon(
+                  onPressed: _showManualPickDialog,
+                  icon: const Icon(Icons.edit_note),
+                  label: const Text(
+                    'Input Manual Lokasi + Part + Qty',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                  style: OutlinedButton.styleFrom(
+                    foregroundColor: Colors.indigo,
+                    side: BorderSide(color: Colors.indigo.shade200),
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ),
+          ],
 
           // Parts list
           Expanded(
@@ -1119,7 +1361,7 @@ class _DoDetailScreenState extends State<DoDetailScreen> {
                       const SizedBox(width: 8),
                       Expanded(
                         child: Text(
-                          'Tap part ini untuk mulai scan lokasi lalu scan part.',
+                          'Tap part ini untuk scan, atau pakai tombol input manual di atas.',
                           style: TextStyle(
                             fontSize: 11,
                             fontWeight: FontWeight.w600,
